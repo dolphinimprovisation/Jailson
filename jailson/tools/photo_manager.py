@@ -246,6 +246,9 @@ def _make_thumbnail_b64(path: str, size: int = 200) -> str | None:
     try:
         from PIL import Image
         import io
+        if Path(path).suffix.lower() in (".heic", ".heif"):
+            import pillow_heif
+            pillow_heif.register_heif_opener()
         img = Image.open(path)
         img.thumbnail((size, size))
         buf = io.BytesIO()

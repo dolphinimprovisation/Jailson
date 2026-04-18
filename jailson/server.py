@@ -132,6 +132,9 @@ def gallery_thumb(path: str, size: int = 200):
     _assert_allowed_path(path)
     try:
         from PIL import Image
+        if Path(path).suffix.lower() in (".heic", ".heif"):
+            import pillow_heif
+            pillow_heif.register_heif_opener()
         img = Image.open(path)
         img.thumbnail((size, size))
         buf = io.BytesIO()

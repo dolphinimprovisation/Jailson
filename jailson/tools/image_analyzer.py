@@ -101,34 +101,44 @@ def scan_image_folder(folder_path: str, recursive: bool = True, max_images: int 
 def encode_image_for_claude(path: str, max_size_kb: int = 4096) -> Optional[dict]:
     """Encode an image as base64 for Claude vision API.
 
+    HEIC/HEIF files are converted to JPEG in memory (Claude doesn't accept them natively).
     Returns: {data, media_type} or None if encoding fails.
     """
+    import io
+    from PIL import Image
+
     p = Path(path).expanduser().resolve()
     if not p.exists():
         return None
 
-    size_kb = p.stat().st_size / 1024
-    if size_kb > max_size_kb:
-        # Resize if too large
-        try:
-            from PIL import Image
-            import io
-            img = Image.open(p)
-            img.thumbnail((1920, 1920))
-            buf = io.BytesIO()
-            fmt = img.format or "JPEG"
-            img.save(buf, format=fmt)
-            data = base64.standard_b64encode(buf.getvalue()).decode("utf-8")
-            media_type = _get_media_type(p.suffix.lower())
-            return {"data": data, "media_type": media_type}
-        except ImportError:
-            return None
+    ext = p.suffix.lower()
+    is_heic = ext in (".heic", ".heif")
 
     try:
+        if is_heic:
+            try:
+                import pillow_heif
+                pillow_heif.register_heif_opener()
+            except ImportError:
+                return None
+
+        img = Image.open(p)
+
+        size_kb = p.stat().st_size / 1024
+        needs_resize = size_kb > max_size_kb
+
+        if is_heic or needs_resize:
+            if needs_resize:
+                img.thumbnail((1920, 1920))
+            buf = io.BytesIO()
+            img.convert("RGB").save(buf, format="JPEG", quality=85)
+            data = base64.standard_b64encode(buf.getvalue()).decode("utf-8")
+            return {"data": data, "media_type": "image/jpeg"}
+
         with open(p, "rb") as f:
             data = base64.standard_b64encode(f.read()).decode("utf-8")
-        media_type = _get_media_type(p.suffix.lower())
-        return {"data": data, "media_type": media_type}
+        return {"data": data, "media_type": _get_media_type(ext)}
+
     except Exception:
         return None
 
