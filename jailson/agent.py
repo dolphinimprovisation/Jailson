@@ -7,6 +7,7 @@ import anthropic
 
 from jailson.config.settings import JAILSON_MODEL, load_charter, charter_to_text, SHOW_THINKING
 from jailson.memory.memory_manager import MemoryManager
+from jailson.memory.temporal import build_temporal_context
 from jailson.agents.pc_agent import run_pc_agent
 from jailson.agents.image_agent import run_image_agent
 
@@ -175,6 +176,12 @@ class JailsonAgent:
                 "type": "text",
                 "text": recent_ctx,
             })
+
+        # 4. Temporal context — always fresh, never cached
+        blocks.append({
+            "type": "text",
+            "text": build_temporal_context(),
+        })
 
         return blocks
 
