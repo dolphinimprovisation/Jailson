@@ -76,9 +76,25 @@ def print_help():
 @click.command()
 @click.option("--no-banner", is_flag=True, help="Não mostrar banner inicial")
 @click.option("--command", "-c", default=None, help="Executar um único comando e sair")
-def main(no_banner: bool, command: str):
+@click.option("--web", is_flag=True, help="Iniciar interface web em http://localhost:8000")
+@click.option("--port", default=8000, help="Porto para a interface web (default: 8000)")
+def main(no_banner: bool, command: str, web: bool, port: int):
     """Jailson — Agente Pessoal de PC."""
     check_api_key()
+
+    if web:
+        import uvicorn
+        from jailson.config.settings import ensure_dirs
+        ensure_dirs()
+        console.print(Panel(
+            f"Interface web em [cyan]http://localhost:{port}[/cyan]\n"
+            "Abre o browser nesse endereço para falar com o Jailson.\n"
+            "Prime [yellow]Ctrl+C[/yellow] para parar.",
+            title="Jailson Web",
+            border_style="cyan",
+        ))
+        uvicorn.run("jailson.server:app", host="0.0.0.0", port=port, reload=False)
+        return
 
     from jailson.agent import JailsonAgent
     from jailson.config.settings import ensure_dirs
