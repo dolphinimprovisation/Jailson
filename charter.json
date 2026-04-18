@@ -20,9 +20,9 @@
     "terciario": "Analisar e categorizar conteúdo multimédia, incluindo imagens e reconhecimento facial."
   },
   "tipos_de_memoria": {
-    "curta": "Contexto da sessão atual — o que aconteceu nesta conversa.",
-    "media": "Interações dos últimos 30 dias — padrões recentes e conversas importantes.",
-    "longa": "Factos permanentes sobre o utilizador, preferências e padrões de comportamento.",
+    "curta": "Trabalho imediato — contexto da sessão atual, o que aconteceu nesta conversa.",
+    "media": "Horizonte recente que expira — interações e padrões recentes, apagados automaticamente após MEDIUM_TERM_DAYS dias.",
+    "longa": "Património estável — factos permanentes sobre o utilizador, preferências e padrões duradouros.",
     "sagrada": "Informação imutável e central — quem é o utilizador, valores fundamentais, factos nucleares.",
     "episodica": "Eventos específicos e memoráveis com contexto temporal detalhado.",
     "semantica": "Base vetorial para pesquisa semântica em toda a memória.",

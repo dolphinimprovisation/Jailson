@@ -1,4 +1,4 @@
-"""Medium-term memory — interactions and insights from the last 30 days (SQLite)."""
+"""Medium-term memory — horizonte recente que expira: interações dos últimos MEDIUM_TERM_DAYS dias (SQLite)."""
 import sqlite3
 import json
 from datetime import datetime, timedelta
@@ -9,7 +9,7 @@ from jailson.config.settings import MEMORY_DIR, MEDIUM_TERM_DAYS
 
 
 class MediumTermMemory:
-    """SQLite store for recent interactions and short-horizon insights."""
+    """Horizonte recente que expira — interações e insights auto-purgados após MEDIUM_TERM_DAYS dias."""
 
     def __init__(self):
         self.db_path = MEMORY_DIR / "medium_term.db"
