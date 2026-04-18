@@ -123,6 +123,23 @@ JAILSON_TOOLS = [
             "required": ["query"],
         },
     },
+    {
+        "name": "open_gallery",
+        "description": (
+            "Abre a interface web da galeria de fotos no browser do utilizador. "
+            "Usa quando o utilizador pede para ver/abrir a galeria, as fotos, ou a interface visual."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "section": {
+                    "type": "string",
+                    "enum": ["gallery", "duplicates", "similar", "trash"],
+                    "description": "Secção a abrir (default: gallery)",
+                },
+            },
+        },
+    },
 ]
 
 
@@ -222,6 +239,15 @@ class JailsonAgent:
                     query=inputs["query"],
                     n=inputs.get("n", 5),
                 )
+
+            elif name == "open_gallery":
+                import webbrowser
+                from jailson.config.settings import DATA_DIR
+                port = int(os.getenv("PORT", "8000"))
+                section = inputs.get("section", "gallery")
+                url = f"http://localhost:{port}/{section}"
+                webbrowser.open(url)
+                return json.dumps({"success": True, "url": url, "message": f"Galeria aberta em {url}"})
 
             else:
                 return json.dumps({"error": f"Ferramenta desconhecida: {name}"})
