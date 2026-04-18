@@ -239,14 +239,17 @@ class JailsonAgent:
             # Build messages: history + current conversation
             messages = self._conversation.copy()
 
-            with self.client.messages.stream(
+            stream_kwargs = dict(
                 model=JAILSON_MODEL,
                 max_tokens=4096,
                 system=system,
                 tools=JAILSON_TOOLS,
                 messages=messages,
-                thinking={"type": "adaptive"} if SHOW_THINKING else None,
-            ) as stream:
+            )
+            if SHOW_THINKING:
+                stream_kwargs["thinking"] = {"type": "adaptive"}
+
+            with self.client.messages.stream(**stream_kwargs) as stream:
                 full_response = ""
                 thinking_text = ""
                 tool_uses = []
