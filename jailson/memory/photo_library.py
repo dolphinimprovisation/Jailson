@@ -206,6 +206,15 @@ class PhotoLibrary:
             ).fetchall()
         return [self._row_to_dict(r) for r in rows]
 
+    def list_library_folders(self) -> list[str]:
+        """Return unique parent directories of all analyzed photos in the DB."""
+        with sqlite3.connect(self.db_path) as con:
+            rows = con.execute("SELECT DISTINCT path FROM photos").fetchall()
+        folders: set[str] = set()
+        for (path,) in rows:
+            folders.add(str(Path(path).parent))
+        return sorted(folders)
+
     def list_folder(self, folder: str, limit: int = 200, offset: int = 0) -> list[dict]:
         with sqlite3.connect(self.db_path) as con:
             rows = con.execute(

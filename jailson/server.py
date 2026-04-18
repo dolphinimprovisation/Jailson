@@ -113,8 +113,34 @@ def gallery_page():
 
 @app.get("/gallery/folders")
 def gallery_folders():
-    folders = [{"path": str(f), "name": f.name, "exists": f.exists()} for f in IMAGE_FOLDERS]
+    # Configured folders + actual folders from the library DB
+    configured = {str(f.resolve()): f for f in IMAGE_FOLDERS}
+    lib_folders = get_library().list_library_folders()
+
+    seen: set[str] = set()
+    folders = []
+
+    # Library folders first (always exist since they were analyzed)
+    for fp in lib_folders:
+        p = Path(fp)
+        key = str(p.resolve())
+        if key not in seen:
+            seen.add(key)
+            folders.append({"path": fp, "name": p.name, "exists": p.exists(), "from_library": True})
+
+    # Configured folders not already included
+    for key, f in configured.items():
+        if key not in seen:
+            seen.add(key)
+            folders.append({"path": str(f), "name": f.name, "exists": f.exists(), "from_library": False})
+
     return {"folders": folders}
+
+
+@app.get("/gallery/search")
+def gallery_search(q: str, limit: int = 200):
+    results = get_library().search_by_tags(q, limit=limit)
+    return {"photos": [{k: v for k, v in p.items() if k != "thumbnail_b64"} for p in results], "total": len(results)}
 
 
 @app.get("/gallery/list")

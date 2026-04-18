@@ -42,9 +42,11 @@
 
     <!-- Folder selector -->
     <select id="folder-sel" onchange="loadFolder(this.value)"
-      class="bg-[#111118] border border-[#1e1e2e] text-gray-300 text-xs rounded-lg px-3 py-1.5 outline-none focus:border-cyan-800">
+      class="bg-[#111118] border border-[#1e1e2e] text-gray-300 text-xs rounded-lg px-3 py-1.5 outline-none focus:border-cyan-800 max-w-[180px]">
       <option value="">A carregar pastas...</option>
     </select>
+    <input id="folder-inp" placeholder="Ou digita caminho…" onkeydown="if(event.key==='Enter')loadFolder(this.value.trim())"
+      class="bg-[#111118] border border-[#1e1e2e] text-xs text-gray-300 rounded-lg px-3 py-1.5 outline-none focus:border-cyan-800 w-48 placeholder-gray-700">
 
     <!-- Actions -->
     <button onclick="showDuplicates()" class="btn-hdr">Duplicadas</button>
@@ -120,16 +122,25 @@
         const { folders } = await r.json();
         const sel = document.getElementById('folder-sel');
         sel.innerHTML = '<option value="">Selecciona pasta...</option>';
-        folders.forEach(f => {
+        const existing = folders.filter(f => f.exists);
+        existing.forEach(f => {
           const o = document.createElement('option');
           o.value = f.path;
-          o.textContent = f.name + (f.exists ? '' : ' (não existe)');
-          o.disabled = !f.exists;
+          o.textContent = (f.from_library ? '📂 ' : '') + f.name;
           sel.appendChild(o);
         });
-        if (folders.length && folders[0].exists) {
-          sel.value = folders[0].path;
-          loadFolder(folders[0].path);
+        // Folders that don't exist shown dimmed
+        folders.filter(f => !f.exists).forEach(f => {
+          const o = document.createElement('option');
+          o.value = f.path;
+          o.textContent = f.name + ' (não existe)';
+          o.disabled = true;
+          o.style.color = '#4b5563';
+          sel.appendChild(o);
+        });
+        if (existing.length) {
+          sel.value = existing[0].path;
+          loadFolder(existing[0].path);
         }
         loadStats();
       } catch(e) { showToast('Erro ao carregar pastas: ' + e.message, true); }
@@ -431,14 +442,26 @@
     }
 
     // ── Search ────────────────────────────────────────────────────────────────
+    let _searchTimer;
     function searchPhotos(q) {
-      if (!q) { renderGrid(allPhotos); return; }
-      const filtered = allPhotos.filter(p =>
-        (p.tags || []).some(t => t.toLowerCase().includes(q.toLowerCase())) ||
-        (p.description || '').toLowerCase().includes(q.toLowerCase())
-      );
-      renderGrid(filtered);
-      document.getElementById('grid-info').textContent = `${filtered.length} resultados`;
+      clearTimeout(_searchTimer);
+      if (!q) { renderGrid(allPhotos); document.getElementById('grid-info').textContent = `${allPhotos.length} fotos`; return; }
+      _searchTimer = setTimeout(async () => {
+        try {
+          const r = await fetch(`/gallery/search?q=${encodeURIComponent(q)}&limit=300`);
+          const { photos, total } = await r.json();
+          renderGrid(photos);
+          document.getElementById('grid-info').textContent = `${total} resultados`;
+        } catch {
+          // fallback: filter local
+          const filtered = allPhotos.filter(p =>
+            (p.tags || []).some(t => t.toLowerCase().includes(q.toLowerCase())) ||
+            (p.description || '').toLowerCase().includes(q.toLowerCase())
+          );
+          renderGrid(filtered);
+          document.getElementById('grid-info').textContent = `${filtered.length} resultados`;
+        }
+      }, 300);
     }
 
     // ── Lightbox ──────────────────────────────────────────────────────────────
