@@ -156,6 +156,8 @@ def gallery_list(folder: str = "", limit: int = 100, offset: int = 0):
 @app.get("/gallery/thumb")
 def gallery_thumb(path: str, size: int = 200):
     _assert_allowed_path(path)
+    from jailson.tools.photo_manager import _ensure_local
+    _ensure_local(path)
     try:
         from PIL import Image
         if Path(path).suffix.lower() in (".heic", ".heif"):
@@ -173,6 +175,8 @@ def gallery_thumb(path: str, size: int = 200):
 @app.get("/gallery/photo")
 def gallery_photo(path: str):
     _assert_allowed_path(path)
+    from jailson.tools.photo_manager import _ensure_local
+    _ensure_local(path)
     p = Path(path)
     if not p.exists():
         raise HTTPException(status_code=404)
