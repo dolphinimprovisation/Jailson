@@ -1,6 +1,8 @@
 """Photo Manager — orchestrates Horus analysis with library caching and cost estimation."""
 import base64
 import json
+import platform
+import subprocess
 from pathlib import Path
 
 import anthropic
@@ -13,6 +15,21 @@ TRASH_DIR = DATA_DIR / "trash"
 
 # Vision API cost estimate (claude-haiku-4-5 input ~$0.80/1M tokens; image ≈ 1500 tokens)
 _COST_PER_IMAGE_USD = 0.0012
+
+
+def _ensure_local(path: str) -> bool:
+    """Force OneDrive to download a cloud-only file. Returns True if file is now local."""
+    if platform.system() != "Windows":
+        return True
+    try:
+        # Reading the file forces OneDrive to download it
+        subprocess.run(
+            ["powershell", "-Command", f'$null = [System.IO.File]::ReadAllBytes("{path}")'],
+            timeout=30, capture_output=True,
+        )
+        return Path(path).stat().st_size > 0
+    except Exception:
+        return False
 
 
 def get_library() -> PhotoLibrary:
@@ -71,6 +88,9 @@ def analyze_photo(path: str, client: anthropic.Anthropic = None, force: bool = F
     p = Path(path)
     if not p.exists():
         return {"success": False, "error": f"Ficheiro não existe: {path}"}
+
+    # Force OneDrive to download cloud-only files before reading
+    _ensure_local(path)
 
     meta = get_image_metadata(path)
     exif = meta if meta.get("success") else {}
