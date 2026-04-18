@@ -1,5 +1,7 @@
 """File writer tools — move, delete, copy, rename, create directory."""
+import platform
 import shutil
+import subprocess
 from pathlib import Path
 
 
@@ -24,9 +26,32 @@ def delete_item(path: str, safe_delete: bool = True) -> dict:
             if len(items) > 100:
                 return {"success": False, "error": f"Pasta tem {len(items)} itens. Usa safe_delete=false para confirmar."}
         if p.is_dir():
-            shutil.rmtree(str(p))
+            try:
+                shutil.rmtree(str(p))
+            except Exception:
+                # Fallback for OneDrive/locked files on Windows
+                if platform.system() == "Windows":
+                    result = subprocess.run(
+                        ["cmd", "/c", "rd", "/s", "/q", str(p)],
+                        capture_output=True, text=True, timeout=30,
+                    )
+                    if result.returncode != 0:
+                        raise RuntimeError(result.stderr or result.stdout)
+                else:
+                    raise
         else:
-            p.unlink()
+            try:
+                p.unlink()
+            except Exception:
+                if platform.system() == "Windows":
+                    result = subprocess.run(
+                        ["cmd", "/c", "del", "/f", "/q", str(p)],
+                        capture_output=True, text=True, timeout=10,
+                    )
+                    if result.returncode != 0:
+                        raise RuntimeError(result.stderr or result.stdout)
+                else:
+                    raise
         return {"success": True, "message": f"Eliminado: {path}"}
     except Exception as e:
         return {"success": False, "error": str(e)}
