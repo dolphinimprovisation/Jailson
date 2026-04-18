@@ -1,0 +1,38 @@
+# Jailson — Regras para o Cursor AI
+
+## O que é este projeto
+Agente pessoal de PC chamado Jailson, construído em Python com a API Anthropic.
+Orquestrador principal + 2 sub-agentes + sistema de memória multi-tier.
+
+## Estrutura
+- `jailson/agent.py` — Orquestrador principal (claude-sonnet-4-6, streaming, tool use)
+- `jailson/agents/pc_agent.py` — Sub-agente PC (claude-haiku-4-5)
+- `jailson/agents/image_agent.py` — Sub-agente imagens (claude-haiku-4-5)
+- `jailson/memory/` — 6 tipos de memória (short/medium/long/sacred/episodic/semantic)
+- `jailson/tools/` — Ferramentas: file_reader, system_info, image_analyzer
+- `jailson/config/settings.py` — Toda a configuração via .env
+- `main.py` — CLI com Rich
+
+## Stack
+- Python 3.11+, anthropic SDK, Rich, SQLite, ChromaDB, psutil, Pillow
+- Ambiente virtual em `venv/`, dados em `~/.jailson/`
+- Variáveis de ambiente em `.env`
+
+## Convenções
+- Código e comentários em inglês
+- Mensagens ao utilizador em português (pt-PT)
+- Sem type annotations redundantes onde o contexto é óbvio
+- Sem comentários que expliquem o óbvio
+- Erros retornam sempre `{"success": False, "error": "..."}` ou lançam exceção
+- Ferramentas dos sub-agentes retornam JSON serializado (string)
+
+## Modelos
+- Orquestrador: `claude-sonnet-4-6` (configurável via JAILSON_MODEL)
+- Sub-agentes: `claude-haiku-4-5` (configurável via SUBAGENT_MODEL)
+- Prompt caching: charter com TTL 1h, memória estável com TTL 5min
+
+## Ao fazer alterações
+- Não adicionar dependências sem atualizar requirements.txt
+- Memory tiers: nunca apagar da memória sagrada
+- Sub-agents: max 6-8 iterações no loop de tool use
+- Streaming: usar sempre `client.messages.stream()` no orquestrador
