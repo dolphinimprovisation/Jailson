@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="pt" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Horus — Galeria</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2a2a3e; border-radius: 3px; }
+
+    .photo-card { cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; }
+    .photo-card:hover { transform: scale(1.03); box-shadow: 0 0 0 2px #22d3ee44; }
+    .photo-card.selected { box-shadow: 0 0 0 2px #22d3ee; }
+    .photo-card.trash-marked { opacity: 0.45; }
+
+    .tag-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
+      background: #1a1a28; border: 1px solid #2a2a3e; border-radius: 9999px;
+      font-size: 11px; color: #94a3b8; cursor: pointer; transition: all 0.1s; }
+    .tag-pill:hover { border-color: #22d3ee66; color: #22d3ee; }
+    .tag-pill.confirmed { background: #164e6340; border-color: #22d3ee66; color: #22d3ee; }
+
+    .spin { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .fade-in { animation: fadeIn 0.2s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    #lightbox { display: none; }
+    #lightbox.open { display: flex; }
+  </style>
+</head>
+<body class="h-full bg-[#0a0a0f] text-gray-200 flex flex-col" style="font-family:'Segoe UI',system-ui,sans-serif;">
+
+  <!-- Header -->
+  <header class="flex-shrink-0 flex items-center gap-3 px-4 py-2.5 bg-[#0d0d14] border-b border-[#1e1e2e]">
+    <a href="/" class="text-gray-500 hover:text-cyan-400 transition-colors text-sm">← Chat</a>
+    <div class="w-px h-4 bg-[#1e1e2e]"></div>
+    <span class="text-cyan-400 font-mono font-bold tracking-widest text-sm">HORUS</span>
+    <span class="text-gray-600 text-xs">— Galeria de Fotos</span>
+    <div class="flex-1"></div>
+
+    <!-- Folder selector -->
+    <select id="folder-sel" onchange="loadFolder(this.value)"
+      class="bg-[#111118] border border-[#1e1e2e] text-gray-300 text-xs rounded-lg px-3 py-1.5 outline-none focus:border-cyan-800">
+      <option value="">A carregar pastas...</option>
+    </select>
+
+    <!-- Actions -->
+    <button onclick="showDuplicates()" class="btn-hdr">Duplicadas</button>
+    <button onclick="showSimilar()" class="btn-hdr">Parecidas</button>
+    <button onclick="showTrash()" class="btn-hdr text-amber-500">Lixo</button>
+
+    <!-- Stats badge -->
+    <div id="lib-stats" class="text-xs text-gray-600 px-2"></div>
+  </header>
+
+  <style>
+    .btn-hdr { padding: 0.2rem 0.7rem; font-size: 11px; background: #111118; border: 1px solid #1e1e2e;
+      color: #6b7280; border-radius: 8px; transition: all 0.15s; cursor: pointer; }
+    .btn-hdr:hover { color: #e2e8f0; border-color: #3a3a5e; }
+  </style>
+
+  <!-- Toolbar -->
+  <div class="flex-shrink-0 flex items-center gap-2 px-4 py-2 border-b border-[#1e1e2e] bg-[#0d0d14]">
+    <button onclick="analyzeFolder()" id="btn-analyze"
+      class="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-cyan-900/40 border border-cyan-800/50 text-cyan-400 rounded-lg hover:bg-cyan-900/60 transition-colors">
+      <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+      </svg>
+      Analisar pasta
+    </button>
+    <button onclick="trashSelected()" id="btn-trash"
+      class="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[#111118] border border-[#1e1e2e] text-gray-500 rounded-lg hover:text-amber-400 hover:border-amber-800/50 transition-colors disabled:opacity-30">
+      🗑 Lixo (<span id="sel-count">0</span>)
+    </button>
+    <div class="flex-1"></div>
+    <span id="grid-info" class="text-xs text-gray-600"></span>
+    <input id="search-inp" placeholder="Pesquisar tags..." oninput="searchPhotos(this.value)"
+      class="bg-[#111118] border border-[#1e1e2e] text-xs text-gray-300 rounded-lg px-3 py-1.5 outline-none focus:border-cyan-800 w-40 placeholder-gray-700">
+  </div>
+
+  <!-- Main layout -->
+  <div class="flex flex-1 overflow-hidden">
+
+    <!-- Photo grid -->
+    <div id="grid" class="flex-1 overflow-y-auto p-3 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2 content-start">
+      <div class="col-span-full text-center text-gray-600 text-sm py-12">Selecciona uma pasta para começar</div>
+    </div>
+
+    <!-- Detail panel -->
+    <div id="panel" class="w-72 flex-shrink-0 border-l border-[#1e1e2e] bg-[#0d0d14] flex flex-col overflow-hidden">
+      <div class="flex-1 overflow-y-auto p-4">
+        <div id="panel-empty" class="text-gray-600 text-xs text-center mt-12">Clica numa foto para ver detalhes</div>
+        <div id="panel-content" class="hidden space-y-4"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lightbox -->
+  <div id="lightbox" class="fixed inset-0 bg-black/90 items-center justify-center z-50" onclick="closeLightbox(event)">
+    <button onclick="document.getElementById('lightbox').classList.remove('open')"
+      class="absolute top-4 right-4 text-gray-400 hover:text-white text-2xl">✕</button>
+    <img id="lb-img" src="" class="max-w-[90vw] max-h-[90vh] object-contain rounded-lg">
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#111118] border border-[#2a2a3e] text-sm px-4 py-2 rounded-xl shadow-xl opacity-0 transition-opacity pointer-events-none z-40"></div>
+
+  <script>
+    let currentFolder = '';
+    let allPhotos = [];
+    let selectedPaths = new Set();
+    let currentPhoto = null;
+
+    // ── Init ──────────────────────────────────────────────────────────────────
+    async function init() {
+      try {
+        const r = await fetch('/gallery/folders');
+        const { folders } = await r.json();
+        const sel = document.getElementById('folder-sel');
+        sel.innerHTML = '<option value="">Selecciona pasta...</option>';
+        folders.forEach(f => {
+          const o = document.createElement('option');
+          o.value = f.path;
+          o.textContent = f.name + (f.exists ? '' : ' (não existe)');
+          o.disabled = !f.exists;
+          sel.appendChild(o);
+        });
+        if (folders.length && folders[0].exists) {
+          sel.value = folders[0].path;
+          loadFolder(folders[0].path);
+        }
+        loadStats();
+      } catch(e) { showToast('Erro ao carregar pastas: ' + e.message, true); }
+    }
+
+    async function loadStats() {
+      try {
+        const s = await (await fetch('/gallery/stats')).json();
+        document.getElementById('lib-stats').textContent =
+          `Biblioteca: ${s.analyzed} analisadas · ${s.in_trash} no lixo`;
+      } catch {}
+    }
+
+    // ── Load folder ───────────────────────────────────────────────────────────
+    async function loadFolder(folder) {
+      if (!folder) return;
+      currentFolder = folder;
+      selectedPaths.clear();
+      updateSelCount();
+      document.getElementById('grid').innerHTML = '<div class="col-span-full text-center text-gray-600 text-sm py-12">A carregar...</div>';
+
+      try {
+        const r = await fetch(`/gallery/list?folder=${encodeURIComponent(folder)}&limit=300`);
+        const { photos } = await r.json();
+        allPhotos = photos;
+        renderGrid(photos);
+        document.getElementById('grid-info').textContent = `${photos.length} fotos`;
+      } catch(e) { showToast('Erro: ' + e.message, true); }
+    }
+
+    function renderGrid(photos) {
+      const grid = document.getElementById('grid');
+      if (!photos.length) {
+        grid.innerHTML = '<div class="col-span-full text-center text-gray-600 text-sm py-12">Nenhuma foto na biblioteca para esta pasta.<br><span class="text-xs">Usa "Analisar pasta" para indexar.</span></div>';
+        return;
+      }
+      grid.innerHTML = '';
+      photos.forEach(p => {
+        const div = document.createElement('div');
+        div.className = 'photo-card relative rounded-lg overflow-hidden bg-[#111118] border border-[#1e1e2e] aspect-square';
+        div.dataset.path = p.path;
+        div.onclick = (e) => { if (e.shiftKey) toggleSelect(p.path, div); else openPhoto(p, div); };
+
+        const img = document.createElement('img');
+        img.src = `/gallery/thumb?path=${encodeURIComponent(p.path)}&size=200`;
+        img.className = 'w-full h-full object-cover';
+        img.loading = 'lazy';
+        img.onerror = () => { img.src = ''; div.classList.add('bg-[#1a1a28]'); };
+
+        // Analyzed indicator
+        if (p.analyzed_at) {
+          const dot = document.createElement('div');
+          dot.className = 'absolute top-1 right-1 w-2 h-2 rounded-full bg-cyan-400 opacity-70';
+          div.appendChild(dot);
+        }
+
+        // Face count
+        if (p.faces_count > 0) {
+          const fc = document.createElement('div');
+          fc.className = 'absolute bottom-1 left-1 text-[9px] bg-black/60 text-white px-1 rounded';
+          fc.textContent = `👤 ${p.faces_count}`;
+          div.appendChild(fc);
+        }
+
+        // Select checkbox
+        const cb = document.createElement('div');
+        cb.className = 'select-cb absolute top-1 left-1 w-4 h-4 rounded border border-white/30 bg-black/40 hidden items-center justify-center';
+        cb.innerHTML = '<svg viewBox="0 0 24 24" fill="white" class="w-3 h-3"><path d="M9 12l2 2 4-4"/></svg>';
+        div.appendChild(cb);
+        div.addEventListener('mouseenter', () => cb.style.display = 'flex');
+        div.addEventListener('mouseleave', () => { if (!selectedPaths.has(p.path)) cb.style.display = 'none'; });
+
+        div.appendChild(img);
+        grid.appendChild(div);
+      });
+    }
+
+    // ── Photo detail ──────────────────────────────────────────────────────────
+    async function openPhoto(photo, cardEl) {
+      // Deselect previous
+      document.querySelectorAll('.photo-card.selected').forEach(el => el.classList.remove('selected'));
+      cardEl.classList.add('selected');
+      currentPhoto = photo;
+
+      const panel = document.getElementById('panel-content');
+      const empty = document.getElementById('panel-empty');
+      empty.classList.add('hidden');
+      panel.classList.remove('hidden');
+
+      panel.innerHTML = `
+        <img src="/gallery/thumb?path=${encodeURIComponent(photo.path)}&size=300"
+          onclick="openLightbox('${encodeURIComponent(photo.path)}')"
+          class="w-full rounded-lg cursor-zoom-in border border-[#1e1e2e]">
+        <div>
+          <p class="text-xs text-gray-400 font-mono break-all">${photo.path.split(/[\\/]/).pop()}</p>
+          ${photo.file_size ? `<p class="text-xs text-gray-600">${(photo.file_size/1024/1024).toFixed(1)} MB</p>` : ''}
+        </div>
+        <div id="panel-desc" class="text-xs text-gray-400 leading-relaxed">${photo.description || '<span class="text-gray-700">Não analisada</span>'}</div>
+        <div id="panel-tags-wrap">
+          <div class="text-xs text-gray-600 mb-1.5">Tags</div>
+          <div id="panel-tags" class="flex flex-wrap gap-1">${renderTags(photo.tags || [], photo.path)}</div>
+          <div class="mt-2 flex gap-1">
+            <input id="new-tag-inp" placeholder="Nova tag..." onkeydown="if(event.key==='Enter')addTag('${photo.path}')"
+              class="flex-1 bg-[#111118] border border-[#1e1e2e] text-xs text-gray-300 rounded px-2 py-1 outline-none focus:border-cyan-800 placeholder-gray-700">
+            <button onclick="addTag('${photo.path}')" class="text-xs px-2 py-1 bg-cyan-900/30 border border-cyan-800/40 text-cyan-400 rounded">+</button>
+          </div>
+        </div>
+        ${photo.faces_count > 0 ? `<div class="text-xs"><span class="text-gray-600">Rostos detectados:</span> <span class="text-cyan-400">${photo.faces_count}</span></div>` : ''}
+        <div class="flex gap-2">
+          <button onclick="analyzeOne('${photo.path}')" class="flex-1 text-xs py-1.5 bg-cyan-900/30 border border-cyan-800/40 text-cyan-400 rounded-lg hover:bg-cyan-900/50 transition-colors">
+            ${photo.analyzed_at ? '↺ Re-analisar' : '✦ Analisar'}
+          </button>
+          <button onclick="trashOne('${photo.path}')" class="text-xs py-1.5 px-3 bg-[#111118] border border-[#1e1e2e] text-amber-500 rounded-lg hover:border-amber-700 transition-colors">🗑</button>
+        </div>
+        ${photo.exif_data && Object.keys(photo.exif_data).length > 1 ? renderExif(photo.exif_data) : ''}
+      `;
+    }
+
+    function renderTags(tags, path) {
+      if (!tags || !tags.length) return '<span class="text-xs text-gray-700">Sem tags</span>';
+      return tags.map(t =>
+        `<span class="tag-pill confirmed" onclick="removeTag('${path}','${t}')">${t} ✕</span>`
+      ).join('');
+    }
+
+    function renderExif(exif) {
+      const items = [];
+      if (exif.date_taken) items.push(['Data', exif.date_taken]);
+      if (exif.camera_make) items.push(['Câmara', `${exif.camera_make} ${exif.camera_model||''}`]);
+      if (exif.gps_lat) items.push(['GPS', `${exif.gps_lat.toFixed(4)}, ${exif.gps_lon.toFixed(4)}`]);
+      if (exif.width) items.push(['Resolução', `${exif.width}×${exif.height}`]);
+      if (!items.length) return '';
+      return `<div class="border-t border-[#1e1e2e] pt-3 space-y-1">${items.map(([k,v]) =>
+        `<div class="flex justify-between text-xs"><span class="text-gray-600">${k}</span><span class="text-gray-400">${v}</span></div>`
+      ).join('')}</div>`;
+    }
+
+    // ── Tags ──────────────────────────────────────────────────────────────────
+    async function addTag(path) {
+      const inp = document.getElementById('new-tag-inp');
+      const tag = inp.value.trim();
+      if (!tag) return;
+      const photo = allPhotos.find(p => p.path === path);
+      if (!photo) return;
+      const tags = [...(photo.tags || []), tag];
+      await saveTags(path, tags);
+      photo.tags = tags;
+      inp.value = '';
+      document.getElementById('panel-tags').innerHTML = renderTags(tags, path);
+      showToast(`Tag "${tag}" adicionada`);
+    }
+
+    async function removeTag(path, tag) {
+      const photo = allPhotos.find(p => p.path === path);
+      if (!photo) return;
+      const tags = (photo.tags || []).filter(t => t !== tag);
+      await saveTags(path, tags);
+      photo.tags = tags;
+      document.getElementById('panel-tags').innerHTML = renderTags(tags, path);
+    }
+
+    async function saveTags(path, tags) {
+      await fetch('/gallery/tags', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({path, tags}),
+      });
+    }
+
+    // ── Analysis ──────────────────────────────────────────────────────────────
+    async function analyzeOne(path) {
+      showToast('A analisar...');
+      try {
+        const r = await fetch('/gallery/analyze', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({path, force: true}),
+        });
+        const data = await r.json();
+        const photo = allPhotos.find(p => p.path === path);
+        if (photo) Object.assign(photo, data);
+        if (currentPhoto?.path === path) openPhoto({...photo}, document.querySelector('.photo-card.selected'));
+        showToast('Análise completa!');
+        loadStats();
+      } catch(e) { showToast('Erro: ' + e.message, true); }
+    }
+
+    async function analyzeFolder() {
+      if (!currentFolder) return;
+      const est = await (await fetch(`/gallery/estimate?folder=${encodeURIComponent(currentFolder)}`)).json();
+      if (!est.success) { showToast('Erro: ' + est.error, true); return; }
+      if (!confirm(`${est.message}\n\nAnalisar até 20 fotos novas agora?`)) return;
+
+      document.getElementById('btn-analyze').disabled = true;
+      document.getElementById('btn-analyze').innerHTML = '<svg class="w-3.5 h-3.5 spin" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M4 4v5h5M20 20v-5h-5M4 9a8 8 0 0114.93-2M20 15a8 8 0 01-14.93 2"/></svg> A analisar...';
+
+      try {
+        const r = await fetch('/gallery/analyze-batch', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({folder_path: currentFolder, max_new: 20}),
+        });
+        const data = await r.json();
+        showToast(`${data.newly_analyzed} fotos analisadas · ${data.skipped_cached} já na biblioteca`);
+        loadFolder(currentFolder);
+        loadStats();
+      } catch(e) { showToast('Erro: ' + e.message, true); }
+      finally {
+        const btn = document.getElementById('btn-analyze');
+        btn.disabled = false;
+        btn.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg> Analisar pasta';
+      }
+    }
+
+    // ── Select & trash ────────────────────────────────────────────────────────
+    function toggleSelect(path, el) {
+      if (selectedPaths.has(path)) {
+        selectedPaths.delete(path);
+        el.classList.remove('selected');
+      } else {
+        selectedPaths.add(path);
+        el.classList.add('selected');
+      }
+      updateSelCount();
+    }
+
+    function updateSelCount() {
+      document.getElementById('sel-count').textContent = selectedPaths.size;
+    }
+
+    async function trashOne(path) {
+      if (!confirm('Mover para lixo?')) return;
+      const r = await fetch('/gallery/trash', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({path, reason: 'manual'}),
+      });
+      const d = await r.json();
+      if (d.success) {
+        allPhotos = allPhotos.filter(p => p.path !== path);
+        document.querySelector(`[data-path="${CSS.escape(path)}"]`)?.remove();
+        document.getElementById('panel-content').classList.add('hidden');
+        document.getElementById('panel-empty').classList.remove('hidden');
+        showToast('Movida para lixo');
+        loadStats();
+      } else showToast('Erro: ' + d.error, true);
+    }
+
+    async function trashSelected() {
+      if (!selectedPaths.size) return;
+      if (!confirm(`Mover ${selectedPaths.size} fotos para o lixo?`)) return;
+      let ok = 0;
+      for (const path of selectedPaths) {
+        const r = await fetch('/gallery/trash', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({path, reason: 'bulk_trash'}),
+        });
+        const d = await r.json();
+        if (d.success) {
+          ok++;
+          allPhotos = allPhotos.filter(p => p.path !== path);
+          document.querySelector(`[data-path="${CSS.escape(path)}"]`)?.remove();
+        }
+      }
+      selectedPaths.clear();
+      updateSelCount();
+      showToast(`${ok} fotos movidas para lixo`);
+      loadStats();
+    }
+
+    // ── Duplicates / Similar ─────────────────────────────────────────────────
+    async function showDuplicates() {
+      showToast('A procurar duplicadas...');
+      const r = await fetch(`/gallery/duplicates?folder=${encodeURIComponent(currentFolder)}`);
+      const d = await r.json();
+      if (!d.groups) { showToast('Nenhuma duplicada encontrada'); return; }
+      alert(`${d.groups} grupos de duplicadas encontrados.\nVer no chat: /pc lista duplicadas`);
+    }
+
+    async function showSimilar() {
+      showToast('A procurar fotos parecidas...');
+      const r = await fetch(`/gallery/similar?folder=${encodeURIComponent(currentFolder)}`);
+      const d = await r.json();
+      if (!d.groups) { showToast('Nenhuma foto parecida encontrada'); return; }
+      alert(`${d.groups} grupos de fotos parecidas.\nVer no chat: /pc lista parecidas`);
+    }
+
+    async function showTrash() {
+      const r = await fetch('/gallery/trash/list');
+      const d = await r.json();
+      if (!d.items.length) { showToast('Lixo vazio'); return; }
+      if (confirm(`${d.items.length} fotos no lixo.\nApagar PERMANENTEMENTE tudo?`)) {
+        const res = await fetch('/gallery/trash/empty', {method: 'POST'});
+        const rd = await res.json();
+        showToast(rd.message || 'Lixo esvaziado');
+        loadStats();
+      }
+    }
+
+    // ── Search ────────────────────────────────────────────────────────────────
+    function searchPhotos(q) {
+      if (!q) { renderGrid(allPhotos); return; }
+      const filtered = allPhotos.filter(p =>
+        (p.tags || []).some(t => t.toLowerCase().includes(q.toLowerCase())) ||
+        (p.description || '').toLowerCase().includes(q.toLowerCase())
+      );
+      renderGrid(filtered);
+      document.getElementById('grid-info').textContent = `${filtered.length} resultados`;
+    }
+
+    // ── Lightbox ──────────────────────────────────────────────────────────────
+    function openLightbox(encodedPath) {
+      document.getElementById('lb-img').src = `/gallery/photo?path=${encodedPath}`;
+      document.getElementById('lightbox').classList.add('open');
+    }
+
+    function closeLightbox(e) {
+      if (e.target === document.getElementById('lightbox'))
+        document.getElementById('lightbox').classList.remove('open');
+    }
+
+    // ── Toast ─────────────────────────────────────────────────────────────────
+    let _toastTimer;
+    function showToast(msg, isError = false) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.style.color = isError ? '#f87171' : '#e2e8f0';
+      t.style.opacity = '1';
+      clearTimeout(_toastTimer);
+      _toastTimer = setTimeout(() => t.style.opacity = '0', 3000);
+    }
+
+    init();
+  </script>
+</body>
+</html>

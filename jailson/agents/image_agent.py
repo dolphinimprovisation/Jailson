@@ -1,4 +1,4 @@
-"""Image Agent — specialist in image analysis, tagging, and facial recognition."""
+"""Horus — image specialist agent with persistent photo library."""
 import json
 import anthropic
 
@@ -10,10 +10,109 @@ from jailson.tools.image_analyzer import (
     detect_faces_basic,
     suggest_image_tags,
 )
+from jailson.tools.photo_manager import (
+    estimate_folder_cost,
+    analyze_photo,
+    analyze_folder_batch,
+    move_to_trash,
+    empty_trash,
+    find_duplicates,
+    find_similar,
+    get_library,
+)
 
 # ── Tool definitions ───────────────────────────────────────────────────────────
 
 IMAGE_TOOLS = [
+    {
+        "name": "estimate_folder_cost",
+        "description": "Estima quantas fotos são novas (nunca analisadas) e o custo aproximado em tokens antes de analisar",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "folder_path": {"type": "string", "description": "Pasta a estimar"},
+            },
+            "required": ["folder_path"],
+        },
+    },
+    {
+        "name": "analyze_folder_batch",
+        "description": "Analisa um lote de fotos novas numa pasta (usa biblioteca — fotos já analisadas são gratuitas)",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "folder_path": {"type": "string", "description": "Pasta a analisar"},
+                "max_new": {"type": "integer", "description": "Máximo de fotos novas a analisar (default: 20)"},
+            },
+            "required": ["folder_path"],
+        },
+    },
+    {
+        "name": "analyze_single_photo",
+        "description": "Analisa uma única foto (usa biblioteca — zero tokens se já analisada)",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Caminho da foto"},
+                "force": {"type": "boolean", "description": "Forçar re-análise mesmo se já na biblioteca (default: false)"},
+            },
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "find_duplicates",
+        "description": "Encontra fotos duplicadas (mesmo hash ou mesmo nome+tamanho)",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "folder_path": {"type": "string", "description": "Pasta a pesquisar (vazio = toda a biblioteca)"},
+            },
+        },
+    },
+    {
+        "name": "find_similar",
+        "description": "Encontra fotos visualmente parecidas usando hash perceptual (séries de rajada, etc.)",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "folder_path": {"type": "string", "description": "Pasta a pesquisar"},
+                "threshold": {"type": "integer", "description": "Sensibilidade 0-20 (default: 10 — mais baixo = mais parecidas)"},
+            },
+        },
+    },
+    {
+        "name": "move_to_trash",
+        "description": "Move uma foto para a pasta de lixo (~/.jailson/trash/) antes de apagar definitivamente",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Caminho da foto"},
+                "reason": {"type": "string", "description": "Motivo (lixo, duplicada, etc.)"},
+            },
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "empty_trash",
+        "description": "Apaga permanentemente todas as fotos na pasta de lixo",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "search_library",
+        "description": "Pesquisa na biblioteca de fotos por tags ou descrição",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Texto a pesquisar (tag, descrição, etc.)"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "library_stats",
+        "description": "Mostra estatísticas da biblioteca de fotos (total analisadas, no lixo, etc.)",
+        "input_schema": {"type": "object", "properties": {}},
+    },
     {
         "name": "get_image_metadata",
         "description": "Obtém metadados de uma imagem: dimensões, formato, dados EXIF (data, câmara, GPS, etc.)",
@@ -69,7 +168,49 @@ IMAGE_TOOLS = [
 
 def _execute_image_tool(name: str, inputs: dict, client: anthropic.Anthropic) -> str:
     try:
-        if name == "get_image_metadata":
+        if name == "estimate_folder_cost":
+            return json.dumps(estimate_folder_cost(inputs["folder_path"]), ensure_ascii=False, default=str)
+
+        elif name == "analyze_folder_batch":
+            return json.dumps(analyze_folder_batch(
+                inputs["folder_path"],
+                max_new=inputs.get("max_new", 20),
+                client=client,
+            ), ensure_ascii=False, default=str)
+
+        elif name == "analyze_single_photo":
+            return json.dumps(analyze_photo(
+                inputs["path"],
+                client=client,
+                force=inputs.get("force", False),
+            ), ensure_ascii=False, default=str)
+
+        elif name == "find_duplicates":
+            return json.dumps(find_duplicates(inputs.get("folder_path", "")), ensure_ascii=False, default=str)
+
+        elif name == "find_similar":
+            return json.dumps(find_similar(
+                inputs.get("folder_path", ""),
+                threshold=inputs.get("threshold", 10),
+            ), ensure_ascii=False, default=str)
+
+        elif name == "move_to_trash":
+            return json.dumps(move_to_trash(inputs["path"], inputs.get("reason", "")), ensure_ascii=False)
+
+        elif name == "empty_trash":
+            return json.dumps(empty_trash(), ensure_ascii=False)
+
+        elif name == "search_library":
+            results = get_library().search_by_tags(inputs["query"])
+            return json.dumps({"success": True, "results": [
+                {"path": r["path"], "tags": r["tags"], "description": r["description"]}
+                for r in results
+            ]}, ensure_ascii=False)
+
+        elif name == "library_stats":
+            return json.dumps(get_library().stats(), ensure_ascii=False)
+
+        elif name == "get_image_metadata":
             result = get_image_metadata(inputs["path"])
             return json.dumps(result, ensure_ascii=False, default=str)
 
@@ -162,14 +303,16 @@ def _analyze_image_vision(inputs: dict, client: anthropic.Anthropic) -> str:
 # ── Agent runner ───────────────────────────────────────────────────────────────
 
 def run_image_agent(task: str, image_path: str = "", client: anthropic.Anthropic = None) -> str:
-    """Run the Image specialist sub-agent and return its analysis."""
+    """Run Horus — the image specialist agent with persistent photo library."""
     if client is None:
         client = anthropic.Anthropic()
 
     system = (
-        "És o Image Agent, um sub-agente especializado em análise de imagens. "
-        "Podes analisar imagens visualmente, extrair metadados EXIF, varrer pastas, "
-        "detectar rostos e sugerir tags de organização. "
+        "És o Horus, o agente especialista em imagens do Jailson. "
+        "Tens uma biblioteca persistente de fotos já analisadas — zero tokens para fotos conhecidas. "
+        "Antes de analisar uma pasta SEMPRE usa estimate_folder_cost para informar o custo. "
+        "Usa analyze_folder_batch para analisar em lote (máx 20 por pedido). "
+        "Podes encontrar duplicadas, fotos parecidas (séries de rajada), mover lixo e pesquisar por tags. "
         "Responde em português de forma clara e organizada."
     )
 
@@ -214,4 +357,4 @@ def _extract_text(response) -> str:
     for block in response.content:
         if hasattr(block, "text"):
             parts.append(block.text)
-    return "\n".join(parts) or "Image Agent completou a tarefa sem output textual."
+    return "\n".join(parts) or "Horus completou a tarefa sem output textual."
