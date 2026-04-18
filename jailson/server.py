@@ -269,7 +269,20 @@ def gallery_stats():
 
 def _assert_allowed_path(path: str):
     p = Path(path).resolve()
-    allowed = [f.resolve() for f in IMAGE_FOLDERS]
     trash = (Path("~/.jailson/trash").expanduser()).resolve()
-    if not any(str(p).startswith(str(a)) for a in allowed) and not str(p).startswith(str(trash)):
-        raise HTTPException(status_code=403, detail="Caminho não permitido")
+
+    # Allow configured IMAGE_FOLDERS
+    allowed = [f.resolve() for f in IMAGE_FOLDERS]
+    if any(str(p).startswith(str(a)) for a in allowed):
+        return
+    # Allow trash
+    if str(p).startswith(str(trash)):
+        return
+    # Allow any path whose parent folder is in the library DB
+    parent = str(p.parent)
+    lib_folders = get_library().list_library_folders()
+    if any(str(Path(lf).resolve()) == str(p.parent.resolve()) or
+           str(p).startswith(str(Path(lf).resolve())) for lf in lib_folders):
+        return
+
+    raise HTTPException(status_code=403, detail="Caminho não permitido")
