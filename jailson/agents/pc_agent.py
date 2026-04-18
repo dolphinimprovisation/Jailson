@@ -4,6 +4,7 @@ import anthropic
 
 from jailson.config.settings import SUBAGENT_MODEL
 from jailson.tools.file_reader import read_file, list_directory, search_files
+from jailson.tools.file_writer import move_item, delete_item, create_directory, copy_item, rename_item
 from jailson.tools.system_info import (
     get_hardware_info,
     get_running_processes,
@@ -92,6 +93,65 @@ PC_TOOLS = [
         "description": "Obtém informação sobre o ambiente Python e variáveis de ambiente",
         "input_schema": {"type": "object", "properties": {}},
     },
+    {
+        "name": "move_item",
+        "description": "Move um ficheiro ou pasta para outra localização",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "src": {"type": "string", "description": "Caminho de origem"},
+                "dst": {"type": "string", "description": "Caminho de destino"},
+            },
+            "required": ["src", "dst"],
+        },
+    },
+    {
+        "name": "delete_item",
+        "description": "Elimina um ficheiro ou pasta. Por segurança, pastas com mais de 100 itens requerem safe_delete=false",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Caminho a eliminar"},
+                "safe_delete": {"type": "boolean", "description": "Protecção contra eliminação de pastas grandes (default: true)"},
+            },
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "create_directory",
+        "description": "Cria uma pasta (incluindo pastas intermédias)",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Caminho da pasta a criar"},
+            },
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "copy_item",
+        "description": "Copia um ficheiro ou pasta para outra localização",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "src": {"type": "string", "description": "Caminho de origem"},
+                "dst": {"type": "string", "description": "Caminho de destino"},
+            },
+            "required": ["src", "dst"],
+        },
+    },
+    {
+        "name": "rename_item",
+        "description": "Renomeia um ficheiro ou pasta mantendo-o na mesma localização",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Caminho actual"},
+                "new_name": {"type": "string", "description": "Novo nome (só o nome, não o caminho completo)"},
+            },
+            "required": ["path", "new_name"],
+        },
+    },
 ]
 
 # ── Tool dispatcher ────────────────────────────────────────────────────────────
@@ -128,6 +188,16 @@ def _execute_tool(name: str, inputs: dict) -> str:
             result = get_installed_software()
         elif name == "get_environment_info":
             result = get_environment_info()
+        elif name == "move_item":
+            result = move_item(inputs["src"], inputs["dst"])
+        elif name == "delete_item":
+            result = delete_item(inputs["path"], inputs.get("safe_delete", True))
+        elif name == "create_directory":
+            result = create_directory(inputs["path"])
+        elif name == "copy_item":
+            result = copy_item(inputs["src"], inputs["dst"])
+        elif name == "rename_item":
+            result = rename_item(inputs["path"], inputs["new_name"])
         else:
             result = {"error": f"Ferramenta desconhecida: {name}"}
         return json.dumps(result, ensure_ascii=False, default=str)[:6000]
@@ -138,17 +208,15 @@ def _execute_tool(name: str, inputs: dict) -> str:
 # ── Agent runner ───────────────────────────────────────────────────────────────
 
 def run_pc_agent(task: str, context: str = "", client: anthropic.Anthropic = None) -> str:
-    """Run the PC specialist sub-agent and return its findings as text.
-
-    Uses claude-haiku-4-5 to keep cost minimal.
-    """
+    """Run the PC specialist sub-agent and return its findings as text."""
     if client is None:
         client = anthropic.Anthropic()
 
     system = (
         "És o PC Agent, um sub-agente especializado em organização e análise de computadores. "
-        "Tens acesso a ferramentas para ler ficheiros, listar pastas, pesquisar conteúdo e obter "
-        "informação de hardware e software. Responde em português de forma concisa e factual. "
+        "Tens acesso a ferramentas para ler ficheiros, listar pastas, pesquisar conteúdo, "
+        "mover, copiar, renomear e eliminar ficheiros, e obter informação de hardware e software. "
+        "Responde em português de forma concisa e factual. "
         "Usa as ferramentas disponíveis para completar a tarefa solicitada."
     )
 
@@ -169,7 +237,6 @@ def run_pc_agent(task: str, context: str = "", client: anthropic.Anthropic = Non
         if response.stop_reason != "tool_use":
             return _extract_text(response)
 
-        # Process tool calls
         messages.append({"role": "assistant", "content": response.content})
         tool_results = []
         for block in response.content:
