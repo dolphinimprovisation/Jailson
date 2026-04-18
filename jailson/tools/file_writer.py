@@ -25,11 +25,13 @@ def delete_item(path: str, safe_delete: bool = True) -> dict:
             items = list(p.rglob("*"))
             if len(items) > 100:
                 return {"success": False, "error": f"Pasta tem {len(items)} itens. Usa safe_delete=false para confirmar."}
+        if platform.system() == "Windows":
+            _onedrive_pause()
+
         if p.is_dir():
             try:
                 shutil.rmtree(str(p))
             except Exception:
-                # Fallback for OneDrive/locked files on Windows
                 if platform.system() == "Windows":
                     result = subprocess.run(
                         ["cmd", "/c", "rd", "/s", "/q", str(p)],
@@ -77,6 +79,17 @@ def copy_item(src: str, dst: str) -> dict:
         return {"success": True, "message": f"Copiado: {src} → {dst}"}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+def _onedrive_pause():
+    """Briefly pause OneDrive sync so file locks are released."""
+    try:
+        subprocess.run(
+            ["taskkill", "/f", "/im", "OneDrive.exe"],
+            capture_output=True, timeout=5,
+        )
+    except Exception:
+        pass
 
 
 def rename_item(path: str, new_name: str) -> dict:
