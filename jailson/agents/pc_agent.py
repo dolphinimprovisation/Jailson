@@ -7,6 +7,7 @@ from jailson.tools.file_reader import read_file, list_directory, search_files
 from jailson.tools.file_writer import move_item, delete_item, create_directory, copy_item, rename_item
 from jailson.tools.system_info import (
     get_hardware_info,
+    get_memory_modules,
     get_running_processes,
     get_disk_usage,
     get_installed_software,
@@ -82,6 +83,11 @@ PC_TOOLS = [
                 "path": {"type": "string", "description": "Caminho (default: /)"},
             },
         },
+    },
+    {
+        "name": "get_memory_modules",
+        "description": "Obtém detalhes dos módulos de RAM físicos: fabricante, part number, velocidade, capacidade e slot — útil para saber exactamente que memória comprar",
+        "input_schema": {"type": "object", "properties": {}},
     },
     {
         "name": "get_installed_software",
@@ -177,6 +183,8 @@ def _execute_tool(name: str, inputs: dict) -> str:
             )
         elif name == "get_hardware_info":
             result = get_hardware_info()
+        elif name == "get_memory_modules":
+            result = get_memory_modules()
         elif name == "get_running_processes":
             result = get_running_processes(
                 top_n=inputs.get("top_n", 20),

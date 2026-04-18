@@ -125,6 +125,84 @@ def get_installed_software() -> dict:
         return {"success": False, "error": str(e), "os": system}
 
 
+def get_memory_modules() -> dict:
+    """Return detailed info about physical RAM modules (manufacturer, part number, speed, capacity)."""
+    system = platform.system()
+    modules = []
+
+    try:
+        if system == "Windows":
+            result = subprocess.run(
+                ["wmic", "memorychip", "get",
+                 "Manufacturer,PartNumber,Speed,Capacity,FormFactor,MemoryType,DeviceLocator",
+                 "/format:csv"],
+                capture_output=True, text=True, timeout=10,
+            )
+            lines = [l.strip() for l in result.stdout.splitlines() if l.strip()]
+            if len(lines) >= 2:
+                headers = [h.strip() for h in lines[0].split(",")]
+                for line in lines[1:]:
+                    vals = [v.strip() for v in line.split(",")]
+                    if len(vals) == len(headers):
+                        m = dict(zip(headers, vals))
+                        capacity_gb = round(int(m.get("Capacity", 0)) / 1024**3, 1) if m.get("Capacity", "").isdigit() else m.get("Capacity", "?")
+                        modules.append({
+                            "slot": m.get("DeviceLocator", ""),
+                            "manufacturer": m.get("Manufacturer", "").strip(),
+                            "part_number": m.get("PartNumber", "").strip(),
+                            "capacity_gb": capacity_gb,
+                            "speed_mhz": m.get("Speed", ""),
+                            "form_factor": _ram_form_factor(m.get("FormFactor", "")),
+                            "memory_type": _ram_type(m.get("MemoryType", "")),
+                        })
+
+        elif system == "Linux":
+            result = subprocess.run(
+                ["dmidecode", "--type", "memory"],
+                capture_output=True, text=True, timeout=10,
+            )
+            current = {}
+            for line in result.stdout.splitlines():
+                line = line.strip()
+                if line.startswith("Memory Device"):
+                    if current:
+                        modules.append(current)
+                    current = {}
+                elif ":" in line:
+                    key, _, val = line.partition(":")
+                    current[key.strip()] = val.strip()
+            if current:
+                modules.append(current)
+
+        elif system == "Darwin":
+            result = subprocess.run(
+                ["system_profiler", "SPMemoryDataType"],
+                capture_output=True, text=True, timeout=10,
+            )
+            modules.append({"raw": result.stdout[:2000]})
+
+        if not modules:
+            return {"success": False, "error": "Não foi possível obter detalhes dos módulos de RAM."}
+
+        return {"success": True, "modules": modules, "count": len(modules)}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def _ram_form_factor(code: str) -> str:
+    mapping = {"8": "DIMM", "12": "SO-DIMM", "13": "SO-DIMM", "0": "Desconhecido"}
+    return mapping.get(code, f"FormFactor({code})")
+
+
+def _ram_type(code: str) -> str:
+    mapping = {
+        "20": "DDR", "21": "DDR2", "24": "DDR3", "26": "DDR4", "34": "DDR5",
+        "0": "Desconhecido", "2": "DRAM",
+    }
+    return mapping.get(code, f"Type({code})")
+
+
 def get_environment_info() -> dict:
     """Return Python environment, PATH, and key env variables."""
     import sys
